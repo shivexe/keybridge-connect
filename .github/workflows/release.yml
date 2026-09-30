@@ -1,0 +1,125 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: node .github/check-source.mjs
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+  macos:
+    needs: source
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+    env:
+      KEYBRIDGE_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: bash apps/macos/build.sh --dmg
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos-${{ matrix.arch }}
+          path: artifacts/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+  android:
+    needs: source
+    runs-on: ubuntu-24.04
+    environment: release
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: flutter pub get --enforce-lockfile && flutter analyze
+        working-directory: apps/android
+      - name: Prepare release signing
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          : "${KEYSTORE:?Missing keystore}" "${STORE_PASSWORD:?Missing store password}" "${KEY_PASSWORD:?Missing key password}" "${KEY_ALIAS:?Missing alias}"
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/keybridge-release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=%s\n' "$RUNNER_TEMP/keybridge-release.jks" "$STORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > "$RUNNER_TEMP/keybridge-signing.properties"
+      - name: Build and verify signed APK
+        env:
+          KEYBRIDGE_SIGNING_PROPERTIES: ${{ runner.temp }}/keybridge-signing.properties
+          EXPECTED_CERT: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          (cd apps/android && flutter build apk --release)
+          KB_APK=apps/android/build/app/outputs/flutter-apk/app-release.apk
+          KB_SIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          KB_CERT="$($KB_SIGNER verify --print-certs "$KB_APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          test -n "$EXPECTED_CERT" && test "$KB_CERT" = "$EXPECTED_CERT"
+          if "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$KB_APK" | grep -q application-debuggable; then
+            echo 'Release APK must not be debuggable' >&2
+            exit 1
+          fi
+          KB_VERSION="$(cut -d+ -f1 VERSION)"
+          mkdir -p artifacts
+          cp "$KB_APK" "artifacts/Keybridge-Connect-$KB_VERSION-Android.apk"
+      - name: Remove runner signing material
+        if: always()
+        run: |
+          rm -f -- "$RUNNER_TEMP/keybridge-release.jks" "$RUNNER_TEMP/keybridge-signing.properties"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: android
+          path: artifacts/*.apk
+          if-no-files-found: error
+          retention-days: 7
+  draft:
+    needs: [macos, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          test "$(find . -maxdepth 1 -name '*.dmg' | wc -l)" -eq 2
+          test "$(find . -maxdepth 1 -name '*.apk' | wc -l)" -eq 1
+          sha256sum -- *.dmg *.apk > SHA256SUMS
+          gh release create "$RELEASE_TAG" --verify-tag --draft --prerelease --title "Keybridge Connect $RELEASE_TAG" --generate-notes --notes 'Mac builds are ad-hoc signed and not notarized. Read the installation guide before opening. Development-signed installations may require re-pairing. This prerelease has not received an independent security audit.' ./*.dmg ./*.apk SHA256SUMS

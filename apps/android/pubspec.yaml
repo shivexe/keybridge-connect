@@ -1,0 +1,18 @@
+name: keybridge_android
+description: Keybridge Connect read-only Android password mirror
+publish_to: none
+version: 0.1.5+6
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  keybridge_protocol:
+    path: ../../packages/keybridge_protocol
+  mobile_scanner: 7.2.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+flutter:
+  uses-material-design: true

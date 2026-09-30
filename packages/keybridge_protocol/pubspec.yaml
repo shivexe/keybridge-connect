@@ -1,0 +1,13 @@
+name: keybridge_protocol
+version: 1.0.0
+publish_to: none
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+dependencies:
+  cryptography: 2.9.0
+  basic_utils: 5.8.2
+  pointycastle: 4.0.0
+  ffi: 2.2.0
+dev_dependencies:
+  test: 1.31.0
+  lints: 6.1.0

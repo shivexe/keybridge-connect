@@ -1,0 +1,51 @@
+plugins {
+    id 'com.android.application'
+    id 'dev.flutter.flutter-gradle-plugin'
+}
+def keybridgeSigning = new Properties()
+def signingPath = System.getenv('KEYBRIDGE_SIGNING_PROPERTIES')
+def keybridgeSigningFile = signingPath ? file(signingPath) : rootProject.file('key.properties')
+if (keybridgeSigningFile.exists()) keybridgeSigningFile.withInputStream { keybridgeSigning.load(it) }
+def releaseRequested = gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
+if (releaseRequested && ['storeFile', 'storePassword', 'keyPassword', 'keyAlias'].any { !keybridgeSigning[it] }) {
+    throw new GradleException('Release signing is required. Set KEYBRIDGE_SIGNING_PROPERTIES or android/key.properties. No signing key will be generated automatically.')
+}
+android {
+    namespace 'dev.keybridge.connect'
+    compileSdk 36
+    ndkVersion flutter.ndkVersion
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    defaultConfig {
+        applicationId 'dev.keybridge.connect'
+        minSdk 26
+        targetSdk 36
+        versionCode flutter.versionCode
+        versionName flutter.versionName
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    buildFeatures { buildConfig true }
+    packaging { resources { excludes += ['META-INF/versions/9/OSGI-INF/MANIFEST.MF']; merges += ['META-INF/LICENSE*', 'META-INF/NOTICE*'] } }
+    signingConfigs {
+        release {
+            if (keybridgeSigningFile.exists()) {
+                storeFile file(keybridgeSigning['storeFile'])
+                storePassword keybridgeSigning['storePassword']
+                keyAlias keybridgeSigning['keyAlias']
+                keyPassword keybridgeSigning['keyPassword']
+            }
+        }
+    }
+    buildTypes { release { signingConfig signingConfigs.release; debuggable false; minifyEnabled false; shrinkResources false } }
+}
+flutter { source '../..' }
+dependencies {
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
+    implementation 'com.google.code.gson:gson:2.13.2'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'androidx.credentials:credentials:1.5.0'
+    implementation 'androidx.biometric:biometric:1.1.0'
+    implementation 'androidx.autofill:autofill:1.3.0'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}

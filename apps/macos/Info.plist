@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>dev.keybridge.connect.mac</string>
+<key>CFBundleName</key><string>Keybridge Connect</string>
+<key>CFBundleExecutable</key><string>KeybridgeConnect</string>
+<key>CFBundleIconFile</key><string>Keybridge</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1.5</string>
+<key>CFBundleVersion</key><string>6</string>
+<key>LSMinimumSystemVersion</key><string>26.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSAppleEventsUsageDescription</key><string>Keybridge opens the supported Apple Passwords export workflow after you click Sync now.</string>
+<key>NSLocalNetworkUsageDescription</key><string>Keybridge delivers encrypted password snapshots only to your approved Android phone on the selected private network.</string>
+</dict></plist>
