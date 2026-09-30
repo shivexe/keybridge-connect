@@ -57,7 +57,7 @@ jobs:
           flutter-version: '3.47.4'
           channel: stable
           cache: true
-      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
       - run: flutter pub get --enforce-lockfile && flutter analyze
         working-directory: apps/android
       - name: Prepare release signing
